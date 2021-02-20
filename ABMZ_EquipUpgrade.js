@@ -1,6 +1,6 @@
 ﻿// =============================================================================
 // ABMZ_EquipUpgrade.js
-// Version: 1.01
+// Version: 1.02
 // -----------------------------------------------------------------------------
 // Copyright (c) 2017 ヱビ
 // Released under the MIT license
@@ -13,7 +13,7 @@
 
 /*:
  * @target MZ
- * @plugindesc v1.01 装備している装備を強化するプラグインです。
+ * @plugindesc v1.02 装備している装備を強化するプラグインです。
  * @author ヱビ
  * @url http://www.zf.em-net.ne.jp/~ebi-games/
  * 
@@ -86,6 +86,10 @@
  * 更新履歴
  * ============================================================================
  * 
+ * Version 1.02
+ *   装備アップグレードを実行するとエラーが出て停止してしまう不具合を修正しまし
+ *   た。
+ * 
  * Version 1.01
  *   MZに対応しました。
  * 
@@ -135,6 +139,18 @@
 			SceneManager.push(Scene_EquipUpgradeSelectActor);
     });
 
+	Window_Selectable.prototype.itemRectForText = function(index) {
+	    var rect = this.itemRect(index);
+	    rect.x += this.textPadding();
+	    rect.width -= this.textPadding() * 2;
+	    return rect;
+	};
+	Window_Base.prototype.standardPadding = function() {
+	    return 18;
+	};
+	Window_Base.prototype.textPadding = function() {
+		return 6;
+	}
 //=============================================================================
 // DataManager
 //=============================================================================
