@@ -1,6 +1,6 @@
 ﻿// =============================================================================
 // ABMZ_EquipUpgrade.js
-// Version: 1.02
+// Version: 1.05a
 // -----------------------------------------------------------------------------
 // Copyright (c) 2017 ヱビ
 // Released under the MIT license
@@ -13,7 +13,7 @@
 
 /*:
  * @target MZ
- * @plugindesc v1.02 装備している装備を強化するプラグインです。
+ * @plugindesc v1.05a 装備している装備を強化するプラグインです。
  * @author ヱビ
  * @url http://www.zf.em-net.ne.jp/~ebi-games/
  * 
@@ -63,6 +63,7 @@
  *   armor id
  *   armor id: x
  *   gold: x
+ *   jp: x
  *   </UpgradeCost>
  *     idにアイテムのIDを、xに個数を設定します。
  *   【注意】「:」のあとに半角スペースを入れないと正しく認識されません。
@@ -86,9 +87,17 @@
  * 更新履歴
  * ============================================================================
  * 
+ * Version 1.05a
+ *   YEP_JobPointsを入れていないときのエラーを修正しました。
+ * 
+ * Version 1.04a
+ *   YEP_JobPointsに対応しました。
+ * 
+ * Version 1.03a
+ *   同じ装備をしている場合、装備をアップグレードできないようにしました。
+ * 
  * Version 1.02
- *   装備アップグレードを実行するとエラーが出て停止してしまう不具合を修正しまし
- *   た。
+ *   装備が固定されていてもアップグレードできるようにしました。
  * 
  * Version 1.01
  *   MZに対応しました。
@@ -139,18 +148,6 @@
 			SceneManager.push(Scene_EquipUpgradeSelectActor);
     });
 
-	Window_Selectable.prototype.itemRectForText = function(index) {
-	    var rect = this.itemRect(index);
-	    rect.x += this.textPadding();
-	    rect.width -= this.textPadding() * 2;
-	    return rect;
-	};
-	Window_Base.prototype.standardPadding = function() {
-	    return 18;
-	};
-	Window_Base.prototype.textPadding = function() {
-		return 6;
-	}
 //=============================================================================
 // DataManager
 //=============================================================================
@@ -174,6 +171,7 @@
 			var notedata = obj.note.split(/[\r\n]+/);
 
 			obj.upgradeCost = 0;
+			obj.upgradeJpCost = 0;
 			obj.upgradeIngredients = [];
 			var gatherIngredients = false;
 			for (var i = 0, l = notedata.length; i < l; i++) {
@@ -220,7 +218,10 @@
       ingId = parseInt(RegExp.$1);
       ingType = 2;
       ingValue = 1;
-    }
+    } else if (line.match(/JP:[ ](\d+)/i)) {
+      obj.upgradeJpCost = parseInt(RegExp.$1);
+      return;
+		}
 		var length = obj.upgradeIngredients.length;
     obj.upgradeIngredients[length] = [ingType, ingId, ingValue];
 	};
@@ -263,6 +264,7 @@
 		if (!item) return false;
 		if (!item.meta.NextGrade) return false;
 		if ($gameParty.gold() < item.upgradeCost) return false;
+		if (Yanfly && Yanfly.JP && $gameParty.menuActor().jp() < item.upgradeJpCost) return false;
 		for (var i = 0, l = item.upgradeIngredients.length; i<l; i++) {
 			var ing = DataManager.getEquipUpgradeIngredient(item, i);
 			var quantity = DataManager.getEquipUpgradeQuantity(item, i);
@@ -309,6 +311,8 @@
 	Window_EquipUpgradeSlot.prototype.setActor = function(actor) {
 		if (this._actor !== actor) {
 			this._actor = actor;
+			// v1.04a
+			$gameParty.setMenuActor(actor);
 			this.refresh();
 		}
 	};
@@ -349,12 +353,21 @@
 		var slots = this._actor.equipSlots();
 		return this._actor ? $dataSystem.equipTypes[slots[index]] : '';
 	};
-
+//=============================================================================
+// 装備強化可能チェックで同じ装備を装備している場合アップグレードできないようにする
+// （※）
+//=============================================================================
 	Window_EquipUpgradeSlot.prototype.isEnabled = function(index) {
-		return this._actor ? 
-						this._actor.isEquipChangeOk(index) 
-						&&DataManager.canUpgradeEquip(this._actor.equips()[index]) 
-						: false;
+		if (!this._actor) return false;
+		var item = this._actor.equips()[index];
+		if (!item) return false;
+		if (!item.meta.NextGrade) return false;
+		var nextItemId = item.meta.NextGrade;
+		var nextItem = (DataManager.isWeapon(item)) ? $dataWeapons[nextItemId] : $dataArmors[nextItemId];
+		
+						/*this._actor.isEquipChangeOk(index) 
+						&&*/return !this._actor.isEquipped(nextItem) &&
+								DataManager.canUpgradeEquip(this._actor.equips()[index]);
 	};
 
 	Window_EquipUpgradeSlot.prototype.isCurrentItemEnabled = function() {
@@ -445,7 +458,7 @@
 			y += this.lineHeight();
 
 			if (item.upgradeCost) {
-				n=1;
+				n++;
 				if ($gameParty.gold() >= item.upgradeCost) {
 					this.resetTextColor();
 					this.drawText(item.upgradeCost +  TextManager.currencyUnit + 
@@ -456,6 +469,20 @@
 					"（" + $gameParty.gold() +TextManager.currencyUnit+"）", x[0], y, w);
 				}
 			}
+
+			if (Yanfly && Yanfly.JP && item.upgradeJpCost) {
+				n++;
+				if (this._actor.jp() >= item.upgradeJpCost) {
+					this.resetTextColor();
+					this.drawText(item.upgradeJpCost +  Yanfly.Param.Jp + 
+					"（" + this._actor.jp() +Yanfly.Param.Jp+"）", x[0], y, w);
+				} else {
+					this.changeTextColor(ColorManager.textColor(6));
+					this.drawText(item.upgradeJpCost +  Yanfly.Param.Jp + 
+					"（" + this._actor.jp() +Yanfly.Param.Jp+"）", x[0], y, w);
+				}
+			}
+			
 			
 
 			var length = item.upgradeIngredients.length;
@@ -737,6 +764,7 @@ Window_EquipStatusForUpgrade.prototype.paramY = function(index) {
 			$gameParty.loseItem(item, 1, false);
 			
 			$gameParty.loseGold(item.upgradeCost);
+			if (Yanfly && Yanfly.JP) actor.loseJp(item.upgradeJpCost);
 			for (var i = 0, l = item.upgradeIngredients.length; i<l; i++) {
 				var ing = DataManager.getEquipUpgradeIngredient(item, i);
 				var quantity = DataManager.getEquipUpgradeQuantity(item, i);
